@@ -19,7 +19,8 @@ namespace AciScaler
         [FunctionName("ScalerFunction")]
         public static async Task Trigger(
             [TimerTrigger(EveryMinute, RunOnStartup = true)] TimerInfo timerInfo,
-            [Queue("compressimagesmessage")] CloudQueue compressImagesMessageQueues,
+            [Queue("compressimagesmessage")] CloudQueue compressImagesMessageQueue,
+            [Queue("longrunningcompressmessage")] CloudQueue longRunningCompressMessageQueue,
             ExecutionContext context,
             ILogger log)
         {
@@ -30,16 +31,35 @@ namespace AciScaler
             var token = await GetAccessToken();
             log.LogInformation("Got a token of length: " + token.Length);
 
-            await compressImagesMessageQueues.FetchAttributesAsync();
-            var messageCount = compressImagesMessageQueues.ApproximateMessageCount;
+            await compressImagesMessageQueue.FetchAttributesAsync();
+            var messageCount = compressImagesMessageQueue.ApproximateMessageCount;
             log.LogInformation($"Found {messageCount} messages in compressImages");
-            if (messageCount > 0)
+
+            if (messageCount > 50)
             {
-                await StartContainer(token, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME"), log);
+                await StartContainer(token, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_MEDIUM"), log);
+            }
+            else if (messageCount > 0)
+            {
+                await StartContainer(token, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_SMALL"), log);
             }
             else
             {
-                await StopContainer(token, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME"), log);
+                await StopContainer(token, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_MEDIUM"), log);
+                await StopContainer(token, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_SMALL"), log);
+            }
+
+            await longRunningCompressMessageQueue.FetchAttributesAsync();
+            var longRunningMessageCount = longRunningCompressMessageQueue.ApproximateMessageCount;
+            log.LogInformation($"Found {messageCount} messages in longRunningCompressImages");
+
+            if (longRunningMessageCount > 50)
+            {
+                await StartContainer(token, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_LARGE"), log);
+            }
+            else if(longRunningMessageCount < 1)
+            {
+                await StopContainer(token, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_LARGE"), log);
             }
         }
 
