@@ -35,9 +35,10 @@ namespace AciScaler
             var messageCount = compressImagesMessageQueue.ApproximateMessageCount;
             log.LogInformation($"Found {messageCount} messages in compressImages");
 
-            if (messageCount > 50)
+            if (messageCount > 32)
             {
                 await StartContainer(token, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_MEDIUM"), log);
+                await StartContainer(token, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_SMALL"), log);
             }
             else if (messageCount > 0)
             {
@@ -51,13 +52,13 @@ namespace AciScaler
 
             await longRunningCompressMessageQueue.FetchAttributesAsync();
             var longRunningMessageCount = longRunningCompressMessageQueue.ApproximateMessageCount;
-            log.LogInformation($"Found {messageCount} messages in longRunningCompressImages");
+            log.LogInformation($"Found {longRunningMessageCount} messages in longRunningCompressImages");
 
-            if (longRunningMessageCount > 50)
+            if (longRunningMessageCount > 0)
             {
                 await StartContainer(token, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_LARGE"), log);
             }
-            else if(longRunningMessageCount < 1)
+            else
             {
                 await StopContainer(token, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_LARGE"), log);
             }
