@@ -14,6 +14,7 @@ namespace AciScaler
     public static class Scaler
     {
         public const string EveryMinute = "0 */1 * * * *";
+        public const string Every12Hours = "0 0 */12 * * *";
         private static HttpClient HttpClient = new HttpClient();
 
         [FunctionName("ScalerFunction")]
@@ -62,6 +63,28 @@ namespace AciScaler
             {
                 await StopContainer(token, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_LARGE"), log);
             }
+        }
+
+        /*
+         * We shut them down every once in a while as an auto-heal
+         * These container groups can get stuck in a crashed state that does no work, but runs the meter
+         * This also makes sure we get a fresh disk every once in a while in case we get low on space
+         * all the actions are based on queue messages, so the message will unlock and retry if they were in the middle of anything
+         */
+        [FunctionName("MiddayShutdownFunction")]
+        public static async Task ShutdownTrigger(
+            [TimerTrigger(Every12Hours)] TimerInfo timerInfo,
+            ExecutionContext context,
+            ILogger log)
+        {
+            log.LogInformation("Starting midday shutdown");
+            var token = await GetAccessToken();
+            log.LogInformation("Got a token of length: " + token.Length);
+
+            await StopContainer(token, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_SMALL"), log);
+            await StopContainer(token, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_MEDIUM"), log);
+            await StopContainer(token, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_LARGE"), log);
+            log.LogInformation("Finished midday shutdown");
         }
 
         private static async Task<string> GetAccessToken()
