@@ -1,4 +1,5 @@
 # aci-scaler
+
 Azure Function to scale Container Instances based on Queue Length
 
 This is very tailored to ImgBot's needs, but can be made more generic if it works out or there is a need.
@@ -15,4 +16,10 @@ CONTAINERGROUP_NAME_SMALL=""
 CONTAINERGROUP_NAME_MEDIUM=""
 CONTAINERGROUP_NAME_LARGE=""
 APPINSIGHTS_INSTRUMENTATIONKEY=""
+GOOGLE_CREDENTIAL=""
+GOOGLE_PROJECT=""
+GOOGLE_ZONE=""
+GOOGLE_INSTANCE=""
 ```
+
+`GOOGLE_CREDENTIAL` is the server-to-server string of json generated in the gcp console
