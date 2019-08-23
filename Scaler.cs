@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading.Tasks;
+using Google.Apis.Auth.OAuth2;
+using Google.Apis.Compute.v1;
+using Google.Apis.Services;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Extensions.Logging;
 using Microsoft.WindowsAzure.Storage.Queue;
@@ -29,26 +31,27 @@ namespace AciScaler
             log.LogInformation("Starting scaler function");
             log.LogInformation("==================================================================");
 
-            var token = await GetAccessToken();
-            log.LogInformation("Got a token of length: " + token.Length);
+            var azureToken = await GetAzureAccessToken();
+            log.LogInformation("Got a token of length: " + azureToken.Length);
 
+            var googleCredential = GetGoogleCredential(context);
             await compressImagesMessageQueue.FetchAttributesAsync();
             var messageCount = compressImagesMessageQueue.ApproximateMessageCount;
             log.LogInformation($"Found {messageCount} messages in compressImages");
 
             if (messageCount > 32)
             {
-                await StartContainer(token, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_MEDIUM"), log);
-                await StartContainer(token, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_SMALL"), log);
+                await StartAciContainer(azureToken, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_MEDIUM"), log);
+                await StartAciContainer(azureToken, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_SMALL"), log);
             }
             else if (messageCount > 0)
             {
-                await StartContainer(token, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_SMALL"), log);
+                await StartAciContainer(azureToken, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_SMALL"), log);
             }
             else
             {
-                await StopContainer(token, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_MEDIUM"), log);
-                await StopContainer(token, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_SMALL"), log);
+                await StopAciContainer(azureToken, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_MEDIUM"), log);
+                await StopAciContainer(azureToken, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_SMALL"), log);
             }
 
             await longRunningCompressMessageQueue.FetchAttributesAsync();
@@ -57,11 +60,23 @@ namespace AciScaler
 
             if (longRunningMessageCount > 0)
             {
-                await StartContainer(token, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_LARGE"), log);
+                // await StartAciContainer(azureToken, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_LARGE"), log);
+                await StartGoogleInstance(
+                    googleCredential,
+                    Environment.GetEnvironmentVariable("GOOGLE_PROJECT"),
+                    Environment.GetEnvironmentVariable("GOOGLE_ZONE"),
+                    Environment.GetEnvironmentVariable("GOOGLE_INSTANCE"),
+                    log);
             }
-            else
+            else if (messageCount <= 0)
             {
-                await StopContainer(token, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_LARGE"), log);
+                //await StopAciContainer(azureToken, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_LARGE"), log);
+                await StopGoogleInstance(
+                    googleCredential,
+                    Environment.GetEnvironmentVariable("GOOGLE_PROJECT"),
+                    Environment.GetEnvironmentVariable("GOOGLE_ZONE"),
+                    Environment.GetEnvironmentVariable("GOOGLE_INSTANCE"),
+                    log);
             }
         }
 
@@ -78,21 +93,29 @@ namespace AciScaler
             ILogger log)
         {
             log.LogInformation("Starting midday shutdown");
-            var token = await GetAccessToken();
-            log.LogInformation("Got a token of length: " + token.Length);
+            var azureToken = await GetAzureAccessToken();
+            log.LogInformation("Got a token of length: " + azureToken.Length);
 
-            await StopContainer(token, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_SMALL"), log);
-            await StopContainer(token, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_MEDIUM"), log);
-            await StopContainer(token, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_LARGE"), log);
+            var googleCredential = GetGoogleCredential(context);
+
+            await StopAciContainer(azureToken, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_SMALL"), log);
+            await StopAciContainer(azureToken, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_MEDIUM"), log);
+            // await StopAciContainer(azureToken, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_LARGE"), log);
+            await StopGoogleInstance(
+                googleCredential,
+                Environment.GetEnvironmentVariable("GOOGLE_PROJECT"),
+                Environment.GetEnvironmentVariable("GOOGLE_ZONE"),
+                Environment.GetEnvironmentVariable("GOOGLE_INSTANCE"),
+                log);
             log.LogInformation("Finished midday shutdown");
         }
 
-        private static async Task<string> GetAccessToken()
+        private static async Task<string> GetAzureAccessToken()
         {
             var response = await HttpClient
                 .PostAsync(
                     $"https://login.microsoftonline.com/{Environment.GetEnvironmentVariable("TENANT_ID")}/oauth2/token",
-                    new FormUrlEncodedContent(new []
+                    new FormUrlEncodedContent(new[]
                     {
                         KeyValuePair.Create("grant_type", "client_credentials"),
                         KeyValuePair.Create("client_id", Environment.GetEnvironmentVariable("CLIENT_ID")),
@@ -104,7 +127,13 @@ namespace AciScaler
             return result.access_token;
         }
 
-        private static async Task StartContainer(string token, string containerGroup, ILogger log)
+        private static GoogleCredential GetGoogleCredential(ExecutionContext context)
+        {
+            var json = Environment.GetEnvironmentVariable("GOOGLE_CREDENTIAL");
+            return GoogleCredential.FromJson(json).CreateScoped(ComputeService.Scope.Compute);
+        }
+
+        private static async Task StartAciContainer(string token, string containerGroup, ILogger log)
         {
             log.LogInformation("Starting Container " + containerGroup);
             var httpRequestMessage = new HttpRequestMessage(
@@ -119,7 +148,7 @@ namespace AciScaler
             log.LogInformation("Started Container " + containerGroup);
         }
 
-        private static async Task StopContainer(string token, string containerGroup, ILogger log)
+        private static async Task StopAciContainer(string token, string containerGroup, ILogger log)
         {
             log.LogInformation("Stopping Container " + containerGroup);
             var httpRequestMessage = new HttpRequestMessage(
@@ -132,6 +161,33 @@ namespace AciScaler
             var response = await HttpClient.SendAsync(httpRequestMessage);
             await response.Content.ReadAsStringAsync();
             log.LogInformation("Stopped Container " + containerGroup);
+        }
+
+        private static async Task StartGoogleInstance(GoogleCredential credential, string project, string zone, string instance, ILogger log)
+        {
+            log.LogInformation("Starting Google Instance " + instance);
+            var service = new ComputeService(new BaseClientService.Initializer
+            {
+                HttpClientInitializer = credential
+            });
+
+            var startRequest = service.Instances.Start(project, zone, instance);
+
+            await startRequest.ExecuteAsync();
+            log.LogInformation("Started Google Instance " + instance);
+        }
+
+        private static async Task StopGoogleInstance(GoogleCredential credential, string project, string zone, string instance, ILogger log)
+        {
+            log.LogInformation("Stopping Google Instance " + instance);
+            var service = new ComputeService(new BaseClientService.Initializer
+            {
+                HttpClientInitializer = credential
+            });
+
+            var stopRequest = service.Instances.Stop(project, zone, instance);
+            await stopRequest.ExecuteAsync();
+            log.LogInformation("Stopped Google Instance " + instance);
         }
     }
 }
