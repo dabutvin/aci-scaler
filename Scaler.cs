@@ -17,8 +17,12 @@ namespace AciScaler
     {
         public const string EveryMinute = "0 */1 * * * *";
         public const string Every12Hours = "0 0 */12 * * *";
+        public const string Every24Hours = "0 30 9 * * *"; // 9:30 am every day
         private static HttpClient HttpClient = new HttpClient();
 
+        /*
+         * Checks queues and either starts or stops machines based on length of queues
+         */
         [FunctionName("ScalerFunction")]
         public static async Task Trigger(
             [TimerTrigger(EveryMinute, RunOnStartup = true)] TimerInfo timerInfo,
@@ -30,6 +34,9 @@ namespace AciScaler
             log.LogInformation("==================================================================");
             log.LogInformation("Starting scaler function");
             log.LogInformation("==================================================================");
+
+            var containerGroupNameSmall = Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_SMALL");
+            if (string.IsNullOrEmpty(containerGroupNameSmall)) return;
 
             var azureToken = await GetAzureAccessToken();
             log.LogInformation("Got a token of length: " + azureToken.Length);
@@ -93,6 +100,9 @@ namespace AciScaler
             ILogger log)
         {
             log.LogInformation("Starting midday shutdown");
+            var containerGroupNameSmall = Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_SMALL");
+            if (string.IsNullOrEmpty(containerGroupNameSmall)) return;
+
             var azureToken = await GetAzureAccessToken();
             log.LogInformation("Got a token of length: " + azureToken.Length);
 
@@ -108,6 +118,28 @@ namespace AciScaler
                 Environment.GetEnvironmentVariable("GOOGLE_INSTANCE"),
                 log);
             log.LogInformation("Finished midday shutdown");
+        }
+
+        /*
+         * This function is meant to stop, wait, and restart arbitrary ACI instances
+         */
+        [FunctionName("DailyRestartFunction")]
+        public static async Task DailyRestartTrigger(
+            [TimerTrigger(Every24Hours, RunOnStartup = true)] TimerInfo timerInfo,
+            ExecutionContext context,
+            ILogger log)
+        {
+            log.LogInformation("Starting daily restart");
+            var dailyRestartName = Environment.GetEnvironmentVariable("DAILYRESTART_NAME");
+            if (string.IsNullOrEmpty(dailyRestartName)) return;
+
+            var azureToken = await GetAzureAccessToken();
+            log.LogInformation("Got a token of length: " + azureToken.Length);
+
+            await StopAciContainer(azureToken, dailyRestartName, log);
+            log.LogInformation("stopped");
+            await StartAciContainer(azureToken, dailyRestartName, log);
+            log.LogInformation("started");
         }
 
         private static async Task<string> GetAzureAccessToken()

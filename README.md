@@ -20,6 +20,7 @@ GOOGLE_CREDENTIAL=""
 GOOGLE_PROJECT=""
 GOOGLE_ZONE=""
 GOOGLE_INSTANCE=""
+DAILYRESTART_NAME=""
 ```
 
 `GOOGLE_CREDENTIAL` is the server-to-server string of json generated in the gcp console
