@@ -41,7 +41,7 @@ namespace AciScaler
             var azureToken = await GetAzureAccessToken();
             log.LogInformation("Got a token of length: " + azureToken.Length);
 
-            var googleCredential = GetGoogleCredential(context);
+            // var googleCredential = GetGoogleCredential(context);
             await compressImagesMessageQueue.FetchAttributesAsync();
             var messageCount = compressImagesMessageQueue.ApproximateMessageCount;
             log.LogInformation($"Found {messageCount} messages in compressImages");
@@ -68,22 +68,22 @@ namespace AciScaler
             if (longRunningMessageCount > 0)
             {
                 // await StartAciContainer(azureToken, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_LARGE"), log);
-                await StartGoogleInstance(
-                    googleCredential,
-                    Environment.GetEnvironmentVariable("GOOGLE_PROJECT"),
-                    Environment.GetEnvironmentVariable("GOOGLE_ZONE"),
-                    Environment.GetEnvironmentVariable("GOOGLE_INSTANCE"),
-                    log);
+                // await StartGoogleInstance(
+                //     googleCredential,
+                //     Environment.GetEnvironmentVariable("GOOGLE_PROJECT"),
+                //     Environment.GetEnvironmentVariable("GOOGLE_ZONE"),
+                //     Environment.GetEnvironmentVariable("GOOGLE_INSTANCE"),
+                //     log);
             }
             else if (messageCount <= 0)
             {
                 //await StopAciContainer(azureToken, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_LARGE"), log);
-                await StopGoogleInstance(
-                    googleCredential,
-                    Environment.GetEnvironmentVariable("GOOGLE_PROJECT"),
-                    Environment.GetEnvironmentVariable("GOOGLE_ZONE"),
-                    Environment.GetEnvironmentVariable("GOOGLE_INSTANCE"),
-                    log);
+                // await StopGoogleInstance(
+                //     googleCredential,
+                //     Environment.GetEnvironmentVariable("GOOGLE_PROJECT"),
+                //     Environment.GetEnvironmentVariable("GOOGLE_ZONE"),
+                //     Environment.GetEnvironmentVariable("GOOGLE_INSTANCE"),
+                //     log);
             }
         }
 
@@ -106,17 +106,17 @@ namespace AciScaler
             var azureToken = await GetAzureAccessToken();
             log.LogInformation("Got a token of length: " + azureToken.Length);
 
-            var googleCredential = GetGoogleCredential(context);
+            // var googleCredential = GetGoogleCredential(context);
 
             await StopAciContainer(azureToken, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_SMALL"), log);
             await StopAciContainer(azureToken, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_MEDIUM"), log);
             // await StopAciContainer(azureToken, Environment.GetEnvironmentVariable("CONTAINERGROUP_NAME_LARGE"), log);
-            await StopGoogleInstance(
-                googleCredential,
-                Environment.GetEnvironmentVariable("GOOGLE_PROJECT"),
-                Environment.GetEnvironmentVariable("GOOGLE_ZONE"),
-                Environment.GetEnvironmentVariable("GOOGLE_INSTANCE"),
-                log);
+            // await StopGoogleInstance(
+            //     googleCredential,
+            //     Environment.GetEnvironmentVariable("GOOGLE_PROJECT"),
+            //     Environment.GetEnvironmentVariable("GOOGLE_ZONE"),
+            //     Environment.GetEnvironmentVariable("GOOGLE_INSTANCE"),
+            //     log);
             log.LogInformation("Finished midday shutdown");
         }
 
